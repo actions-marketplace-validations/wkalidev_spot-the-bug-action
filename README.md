@@ -1,8 +1,23 @@
 # Spot the Bug
 
-Scan the Solidity files changed in a pull request with [Slither](https://github.com/crytic/slither) and get one sticky summary comment on the PR.
+Catch Solidity vulnerabilities in every pull request — before they reach mainnet.
 
-## Usage
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Spot%20the%20Bug-blue?logo=github)](https://github.com/marketplace/actions/spot-the-bug)
+[![Latest release](https://img.shields.io/github/v/release/wkalidev/spot-the-bug-action)](https://github.com/wkalidev/spot-the-bug-action/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+![Spot the Bug comment on a pull request](docs/pr-comment.png)
+
+👉 See it live on a real PR: https://github.com/wkalidev/spot-the-bug-demo/pull/1
+
+## Why Spot the Bug
+
+- **Only changed files are scanned** — fast, and no noise from code you didn't touch.
+- **One sticky comment** — updated in place on every push.
+- **Plain-English explanations** — instead of raw [Slither](https://github.com/crytic/slither) output.
+- **Fail-on threshold** — block risky merges at the severity you choose.
+
+## Quick start
 
 ```yaml
 on: pull_request
@@ -20,11 +35,37 @@ jobs:
           fail-on: high
 ```
 
-On `pull_request` / `pull_request_target`, only findings located in added, modified or renamed `.sol` files are reported. If no Solidity file changed, the action exits successfully without commenting. On other events (`push`, `workflow_dispatch`, …) every finding is in scope and the summary is written to the job summary.
+Slither must be able to compile your project on the runner:
 
-The comment is updated in place on every run, so the PR keeps a single Spot the Bug comment. Informational and optimization findings are counted but not listed.
+- **Foundry** — check out with `submodules: recursive` and add `foundry-rs/foundry-toolchain@v1` before the action.
+- **Hardhat** — run `npm ci` before the action.
 
-Foundry and Hardhat projects must be compilable by Slither on the runner. Install their dependencies (for example `forge install` or `npm ci`) before this step if needed.
+Foundry example:
+
+```yaml
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  spot-the-bug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: wkalidev/spot-the-bug-action@v1
+        with:
+          fail-on: high
+```
+
+## How it works
+
+- On `pull_request` / `pull_request_target`, only findings in added, modified or renamed `.sol` files are reported. If no Solidity file changed, the action exits successfully without commenting.
+- On other events (`push`, `workflow_dispatch`, …), every finding is in scope and the summary is written to the job summary.
+- The comment is updated in place on every run, so the PR keeps a single Spot the Bug comment.
+- Informational and optimization findings are counted but not listed.
 
 ## Inputs
 
@@ -45,8 +86,16 @@ Foundry and Hardhat projects must be compilable by Slither on the runner. Instal
 
 ## Roadmap
 
-- Custom rules from the Spot the Bug video series.
+Custom rules inspired by real hacks from the Spot the Bug video series:
+
+- ERC-4626 vault inflation attacks
+- Infinite token approvals
+- Uninitialized proxies
 
 ## License
 
-[MIT](LICENSE) © wkalidev
+[MIT](LICENSE)
+
+---
+
+Built by [wkalidev](https://github.com/wkalidev) · Need a full smart contract audit? hello@wkalidev.com
