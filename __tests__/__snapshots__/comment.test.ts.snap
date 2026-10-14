@@ -8,11 +8,11 @@ exports[`renderComment > renders findings from the fixture 1`] = `
 
 <sub>Not shown: 1 informational, 0 optimization.</sub>
 
-| Severity | Check | Location | Description |
-| --- | --- | --- | --- |
-| 🔴 High | \`reentrancy-eth\` | [\`src/Vault.sol:20\`](https://github.com/acme/demo/blob/abc123/src/Vault.sol#L20) | Reentrancy in Vault.withdraw(uint256) (src/Vault.sol#20-27): |
-| 🟠 Medium | \`unchecked-transfer\` | [\`src/Token.sol:41\`](https://github.com/acme/demo/blob/abc123/src/Token.sol#L41) | Token.transfer(address,uint256) (src/Token.sol#41-45) ignores return value by token.transfer(to,amount) (src/Token.sol#43) |
-| 🟡 Low | \`missing-zero-check\` | [\`src/Vault.sol:33\`](https://github.com/acme/demo/blob/abc123/src/Vault.sol#L33) | Vault.setOwner(address).newOwner (src/Vault.sol#33) lacks a zero-check on : |
+| Severity | Issue | Location |
+| --- | --- | --- |
+| 🔴 High | **Reentrancy can drain ETH** — \`Vault.withdraw\` | [\`Vault.sol:20\`](https://github.com/acme/demo/blob/abc123/src/Vault.sol#L20) |
+| 🟠 Medium | **Token transfer result ignored** — \`Token.transfer\` | [\`Token.sol:41\`](https://github.com/acme/demo/blob/abc123/src/Token.sol#L41) |
+| 🟡 Low | **Address not checked for zero** — \`Vault.setOwner\` | [\`Vault.sol:33\`](https://github.com/acme/demo/blob/abc123/src/Vault.sol#L33) |
 
 <sub>Scanned by [Spot the Bug](https://github.com/wkalidev/spot-the-bug-action) · Need a full audit? hello@wkalidev.com</sub>
 "

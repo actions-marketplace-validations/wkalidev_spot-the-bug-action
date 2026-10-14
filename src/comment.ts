@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { cleanDescription, explain, extractFunction, slitherWikiUrl } from "./explanations.js";
 import type { Finding, FindingsSummary, Severity } from "./findings.js";
 
 type Octokit = ReturnType<typeof github.getOctokit>;
@@ -26,6 +27,15 @@ export interface LinkContext {
   sha: string;
 }
 
+export interface RenderOptions {
+  /** Wiki URL reported by Slither for each check id. */
+  wikiUrls?: ReadonlyMap<string, string>;
+}
+
+function escapeLinkText(text: string): string {
+  return text.replace(/[[\]]/g, "\\$&");
+}
+
 function escapeCell(text: string): string {
   return text.replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim();
 }
@@ -38,16 +48,38 @@ export function blobUrl(file: string, line: number, link: LinkContext): string {
 
 function renderLocation(finding: Finding, link: LinkContext): string {
   if (!finding.file) return "—";
-  const label = finding.line > 0 ? `${finding.file}:${finding.line}` : finding.file;
+  const name = finding.file.slice(finding.file.lastIndexOf("/") + 1);
+  const label = finding.line > 0 ? `${name}:${finding.line}` : name;
   return `[\`${label}\`](${blobUrl(finding.file, finding.line, link)})`;
 }
 
-function renderRow(finding: Finding, link: LinkContext): string {
-  const severity = `${SEVERITY_ICONS[finding.severity]} ${finding.severity}`;
-  return `| ${severity} | \`${finding.id}\` | ${renderLocation(finding, link)} | ${escapeCell(finding.description)} |`;
+/**
+ * Plain-English title and affected function for known checks, or the cleaned
+ * Slither text otherwise. Linked to the Slither wiki when its URL is known.
+ */
+export function renderIssue(finding: Finding, options: RenderOptions = {}): string {
+  const explanation = explain(finding.id);
+  const text = explanation?.title ?? (cleanDescription(finding.description) || finding.id);
+  const wikiUrl = slitherWikiUrl(options.wikiUrls?.get(finding.id));
+  const tooltip = explanation ? ` "${explanation.why.replace(/"/g, "'")}"` : "";
+  const label = wikiUrl ? `[${escapeLinkText(text)}](${wikiUrl}${tooltip})` : text;
+  if (!explanation) return label;
+
+  const fn = extractFunction(finding.description);
+  return fn ? `**${label}** — \`${fn}\`` : `**${label}**`;
 }
 
-export function renderComment(summary: FindingsSummary, link: LinkContext): string {
+function renderRow(finding: Finding, link: LinkContext, options: RenderOptions): string {
+  const severity = `${SEVERITY_ICONS[finding.severity]} ${finding.severity}`;
+  const issue = escapeCell(renderIssue(finding, options));
+  return `| ${severity} | ${issue} | ${renderLocation(finding, link)} |`;
+}
+
+export function renderComment(
+  summary: FindingsSummary,
+  link: LinkContext,
+  options: RenderOptions = {},
+): string {
   const total = summary.reported.length;
   const lines: string[] = [COMMENT_MARKER];
 
@@ -74,10 +106,10 @@ export function renderComment(summary: FindingsSummary, link: LinkContext): stri
 
   if (total > 0) {
     lines.push("");
-    lines.push("| Severity | Check | Location | Description |");
-    lines.push("| --- | --- | --- | --- |");
+    lines.push("| Severity | Issue | Location |");
+    lines.push("| --- | --- | --- |");
     for (const finding of summary.reported.slice(0, MAX_ROWS)) {
-      lines.push(renderRow(finding, link));
+      lines.push(renderRow(finding, link, options));
     }
     if (total > MAX_ROWS) {
       lines.push("");

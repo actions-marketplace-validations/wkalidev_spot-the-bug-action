@@ -32,7 +32,7 @@ export async function run(): Promise<void> {
     return;
   }
 
-  const { detectors } = await runSlither(workingDirectory, slitherArgs);
+  const { detectors, wikiUrls } = await runSlither(workingDirectory, slitherArgs);
   core.info(`Slither reported ${detectors.length} detector results.`);
 
   const summary = summarizeFindings(detectors, changed, {
@@ -46,11 +46,15 @@ export async function run(): Promise<void> {
   );
 
   const pullRequest = isPullRequestEvent(context) ? context.payload.pull_request : undefined;
-  const body = renderComment(summary, {
-    serverUrl: context.serverUrl,
-    ...context.repo,
-    sha: (pullRequest?.head as { sha?: string } | undefined)?.sha ?? context.sha,
-  });
+  const body = renderComment(
+    summary,
+    {
+      serverUrl: context.serverUrl,
+      ...context.repo,
+      sha: (pullRequest?.head as { sha?: string } | undefined)?.sha ?? context.sha,
+    },
+    { wikiUrls },
+  );
 
   if (pullRequest) {
     try {
