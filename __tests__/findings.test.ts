@@ -10,7 +10,7 @@ import { ALL_FILES, PATH_CONTEXT, changedFiles, loadFixture } from "./helpers.js
 
 describe("parseSlitherReport", () => {
   it("returns the detector results", () => {
-    expect(loadFixture()).toHaveLength(4);
+    expect(loadFixture()).toHaveLength(10);
   });
 
   it("throws on invalid JSON", () => {
@@ -84,15 +84,15 @@ describe("toRepoRelative", () => {
 
 describe("normalizeFinding", () => {
   it("maps a slither result to a finding", () => {
-    const [high] = loadFixture();
-    expect(normalizeFinding(high!, PATH_CONTEXT)).toEqual({
+    const reentrancy = loadFixture().find((d) => d.check === "reentrancy-eth");
+    expect(normalizeFinding(reentrancy!, PATH_CONTEXT)).toEqual({
       id: "reentrancy-eth",
       severity: "High",
       confidence: "Medium",
-      file: "src/Vault.sol",
-      line: 20,
+      file: "src/vulns/ReentrantBank.sol",
+      line: 16,
       description: expect.stringMatching(
-        /^Reentrancy in Vault\.withdraw\(uint256\) \(src\/Vault\.sol#20-27\):\n\tExternal calls:/,
+        /^Reentrancy in ReentrantBank\.withdraw\(\) \(src\/vulns\/ReentrantBank\.sol#16-26\):\n\tExternal calls:/,
       ),
     });
   });
@@ -123,16 +123,29 @@ describe("dedupeFindings", () => {
 describe("summarizeFindings", () => {
   it("counts reported severities and hidden ones separately", () => {
     const summary = summarizeFindings(loadFixture(), ALL_FILES, PATH_CONTEXT);
-    expect(summary.counts).toEqual({ High: 1, Medium: 1, Low: 1 });
+    expect(summary.counts).toEqual({ High: 4, Medium: 1, Low: 3 });
     expect(summary.informationalCount).toBe(1);
-    expect(summary.optimizationCount).toBe(0);
-    expect(summary.reported.map((f) => f.severity)).toEqual(["High", "Medium", "Low"]);
+    expect(summary.optimizationCount).toBe(1);
+    expect(summary.reported.map((f) => `${f.severity} ${f.id}`)).toEqual([
+      "High arbitrary-send-eth",
+      "High unprotected-upgrade",
+      "High reentrancy-eth",
+      "High unchecked-transfer",
+      "Medium tx-origin",
+      "Low missing-zero-check",
+      "Low missing-zero-check",
+      "Low reentrancy-benign",
+    ]);
   });
 
   it("keeps only findings in changed files", () => {
-    const summary = summarizeFindings(loadFixture(), changedFiles("src/Token.sol"), PATH_CONTEXT);
-    expect(summary.reported.map((f) => f.id)).toEqual(["unchecked-transfer"]);
-    expect(summary.counts).toEqual({ High: 0, Medium: 1, Low: 0 });
+    const summary = summarizeFindings(
+      loadFixture(),
+      changedFiles("src/vulns/ReentrantBank.sol"),
+      PATH_CONTEXT,
+    );
+    expect(summary.reported.map((f) => f.id)).toEqual(["reentrancy-eth"]);
+    expect(summary.counts).toEqual({ High: 1, Medium: 0, Low: 0 });
     expect(summary.informationalCount).toBe(1);
   });
 
@@ -145,6 +158,6 @@ describe("summarizeFindings", () => {
   it("deduplicates repeated detector results", () => {
     const detectors = loadFixture();
     const summary = summarizeFindings([...detectors, ...detectors], ALL_FILES, PATH_CONTEXT);
-    expect(summary.reported).toHaveLength(3);
+    expect(summary.reported).toHaveLength(8);
   });
 });

@@ -9,7 +9,7 @@ import {
   renderRawOutput,
 } from "../src/comment.js";
 import { summarizeFindings, type Finding, type FindingsSummary } from "../src/findings.js";
-import { ALL_FILES, PATH_CONTEXT, changedFiles, loadFixture } from "./helpers.js";
+import { ALL_FILES, PATH_CONTEXT, changedFiles, loadFixture, loadReport } from "./helpers.js";
 
 const LINK = {
   serverUrl: "https://github.com",
@@ -20,18 +20,22 @@ const LINK = {
 
 describe("renderComment", () => {
   it("renders findings from the fixture", () => {
-    const summary = summarizeFindings(loadFixture(), ALL_FILES, PATH_CONTEXT);
-    const body = renderComment(summary, LINK);
+    const { detectors, wikiUrls } = loadReport();
+    const summary = summarizeFindings(detectors, ALL_FILES, PATH_CONTEXT);
+    const body = renderComment(summary, LINK, { wikiUrls });
 
     expect(body.startsWith(COMMENT_MARKER)).toBe(true);
-    expect(body).toContain("## 🔍 Spot the Bug — 3 findings in changed files");
-    expect(body).toContain("🔴 High: **1** · 🟠 Medium: **1** · 🟡 Low: **1**");
-    expect(body).toContain("Not shown: 1 informational, 0 optimization.");
+    expect(body).toContain("## 🔍 Spot the Bug — 8 findings in changed files");
+    expect(body).toContain("🔴 High: **4** · 🟠 Medium: **1** · 🟡 Low: **3**");
+    expect(body).toContain("Not shown: 1 informational, 1 optimization.");
     expect(body).toContain("| Severity | Issue | Location |");
     expect(body).toContain(
-      "| 🔴 High | **Reentrancy can drain ETH** — `Vault.withdraw` | [`Vault.sol:20`](https://github.com/acme/demo/blob/abc123/src/Vault.sol#L20) |",
+      "| 🔴 High | **[Reentrancy can drain ETH](https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities-1 " +
+        '"State is updated after an external call, so a callback can withdraw again.")** — `ReentrantBank.withdraw` | ' +
+        "[`ReentrantBank.sol:16`](https://github.com/acme/demo/blob/abc123/src/vulns/ReentrantBank.sol#L16) |",
     );
-    expect(body).not.toContain("solc-version");
+    expect(body).not.toContain("low-level-calls");
+    expect(body).not.toContain("immutable-states");
     expect(body).toContain(
       "<sub>Scanned by [Spot the Bug](https://github.com/wkalidev/spot-the-bug-action) · Need a full audit? hello@wkalidev.com</sub>",
     );
@@ -43,6 +47,18 @@ describe("renderComment", () => {
     expect(renderComment(summary, LINK)).not.toContain("[`src/");
   });
 
+  it("keeps Slither's source paths and broken endings out of the tables", () => {
+    const summary = summarizeFindings(loadFixture(), ALL_FILES, PATH_CONTEXT);
+    const rows = renderComment(summary, LINK)
+      .split("\n")
+      .filter((l) => /^\| (🔴|🟠|🟡)/u.test(l));
+    expect(rows).toHaveLength(8);
+    for (const row of rows) {
+      expect(row).not.toMatch(/\.sol#\d/);
+      expect(row).not.toMatch(/ (on|by) :/);
+    }
+  });
+
   it("renders the clean state", () => {
     const summary = summarizeFindings(loadFixture(), changedFiles("src/Other.sol"), PATH_CONTEXT);
     const body = renderComment(summary, LINK);
@@ -52,7 +68,11 @@ describe("renderComment", () => {
   });
 
   it("uses the singular for one finding", () => {
-    const summary = summarizeFindings(loadFixture(), changedFiles("src/Token.sol"), PATH_CONTEXT);
+    const summary = summarizeFindings(
+      loadFixture(),
+      changedFiles("src/vulns/TxOriginWallet.sol"),
+      PATH_CONTEXT,
+    );
     expect(renderComment(summary, LINK)).toContain("— 1 finding in changed files");
   });
 
@@ -81,14 +101,18 @@ describe("renderComment", () => {
   it("collapses low-severity findings below high and medium ones", () => {
     const summary = summarizeFindings(loadFixture(), ALL_FILES, PATH_CONTEXT);
     const body = renderComment(summary, LINK);
-    const details = body.indexOf("<details>\n<summary>🟡 1 low-severity finding</summary>\n\n|");
+    const details = body.indexOf("<details>\n<summary>🟡 3 low-severity findings</summary>\n\n|");
     expect(details).toBeGreaterThan(body.indexOf("| 🟠 Medium"));
     expect(body.indexOf("| 🟡 Low")).toBeGreaterThan(details);
-    expect(body.indexOf("</details>")).toBeGreaterThan(body.indexOf("| 🟡 Low"));
+    expect(body.indexOf("</details>")).toBeGreaterThan(body.lastIndexOf("| 🟡 Low"));
   });
 
   it("renders only the collapsed table when all findings are low", () => {
-    const summary = summarizeFindings(loadFixture(), changedFiles("src/Vault.sol"), PATH_CONTEXT);
+    const summary = summarizeFindings(
+      loadFixture(),
+      changedFiles("src/vulns/ArbitrarySend.sol"),
+      PATH_CONTEXT,
+    );
     const lowOnly = { ...summary, reported: summary.reported.filter((f) => f.severity === "Low") };
     const body = renderComment(lowOnly, LINK);
     expect(body.split("| Severity | Issue | Location |")).toHaveLength(2);
@@ -119,7 +143,7 @@ describe("renderComment", () => {
     const rows = renderComment(summary, LINK)
       .split("\n")
       .filter((l) => /^\| (🔴|🟠|🟡)/u.test(l));
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(8);
     for (const row of rows) expect(row.split(/(?<!\\)\|/)).toHaveLength(5);
   });
 });
@@ -139,8 +163,11 @@ describe("renderRawOutput", () => {
     const summary = summarizeFindings(loadFixture(), ALL_FILES, PATH_CONTEXT);
     const body = renderComment(summary, LINK);
     const raw = body.slice(body.indexOf("<summary>Raw Slither output</summary>"));
-    expect(raw).toContain("```text\n[High] reentrancy-eth src/Vault.sol:20\nReentrancy in");
-    expect(raw).toContain("\tState variables written after the call(s):");
+    expect(raw).toContain(
+      "\n\n[High] reentrancy-eth src/vulns/ReentrantBank.sol:16\nReentrancy in ReentrantBank.withdraw()",
+    );
+    expect(raw).toContain("can be used in cross function reentrancies:");
+    expect(raw).toContain("lacks a zero-check on :\n\t\t- to.transfer(amount)");
     expect(raw.indexOf("</details>")).toBeGreaterThan(raw.indexOf("\n```\n"));
   });
 

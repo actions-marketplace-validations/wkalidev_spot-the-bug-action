@@ -2,23 +2,28 @@
 
 exports[`renderComment > renders findings from the fixture 1`] = `
 "<!-- spot-the-bug -->
-## 🔍 Spot the Bug — 3 findings in changed files
+## 🔍 Spot the Bug — 8 findings in changed files
 
-🔴 High: **1** · 🟠 Medium: **1** · 🟡 Low: **1**
+🔴 High: **4** · 🟠 Medium: **1** · 🟡 Low: **3**
 
-<sub>Not shown: 1 informational, 0 optimization.</sub>
+<sub>Not shown: 1 informational, 1 optimization.</sub>
 
 | Severity | Issue | Location |
 | --- | --- | --- |
-| 🔴 High | **Reentrancy can drain ETH** — \`Vault.withdraw\` | [\`Vault.sol:20\`](https://github.com/acme/demo/blob/abc123/src/Vault.sol#L20) |
-| 🟠 Medium | **Token transfer result ignored** — \`Token.transfer\` | [\`Token.sol:41\`](https://github.com/acme/demo/blob/abc123/src/Token.sol#L41) |
+| 🔴 High | **[Anyone can send the contract's ETH](https://github.com/crytic/slither/wiki/Detector-Documentation#functions-that-send-ether-to-arbitrary-destinations "A public function forwards ETH to a caller-controlled address.")** — \`ArbitrarySend.sweepFees\` | [\`ArbitrarySend.sol:22\`](https://github.com/acme/demo/blob/abc123/src/vulns/ArbitrarySend.sol#L22) |
+| 🔴 High | **[Anyone can initialize or destroy the contract](https://github.com/crytic/slither/wiki/Detector-Documentation#unprotected-upgradeable-contract "The initializer is unprotected, so an attacker can take ownership and selfdestruct it.")** — \`ParityStyleLibrary.initWallet\` | [\`ParityStyleLibrary.sol:21\`](https://github.com/acme/demo/blob/abc123/src/vulns/ParityStyleLibrary.sol#L21) |
+| 🔴 High | **[Reentrancy can drain ETH](https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities-1 "State is updated after an external call, so a callback can withdraw again.")** — \`ReentrantBank.withdraw\` | [\`ReentrantBank.sol:16\`](https://github.com/acme/demo/blob/abc123/src/vulns/ReentrantBank.sol#L16) |
+| 🔴 High | **[Token transfer result ignored](https://github.com/crytic/slither/wiki/Detector-Documentation#unchecked-transfer "A transfer that returns false goes unnoticed; use SafeERC20.")** — \`UncheckedToken.withdraw\` | [\`UncheckedToken.sol:30\`](https://github.com/acme/demo/blob/abc123/src/vulns/UncheckedToken.sol#L30) |
+| 🟠 Medium | **[Authorization uses tx.origin](https://github.com/crytic/slither/wiki/Detector-Documentation#dangerous-usage-of-txorigin "A malicious contract the owner calls can act as the owner; use msg.sender.")** — \`TxOriginWallet.transferTo\` | [\`TxOriginWallet.sol:18\`](https://github.com/acme/demo/blob/abc123/src/vulns/TxOriginWallet.sol#L18) |
 
 <details>
-<summary>🟡 1 low-severity finding</summary>
+<summary>🟡 3 low-severity findings</summary>
 
 | Severity | Issue | Location |
 | --- | --- | --- |
-| 🟡 Low | **Address not checked for zero** — \`Vault.setOwner\` | [\`Vault.sol:33\`](https://github.com/acme/demo/blob/abc123/src/Vault.sol#L33) |
+| 🟡 Low | **[Address not checked for zero](https://github.com/crytic/slither/wiki/Detector-Documentation#missing-zero-address-validation "Passing address(0) can burn funds or lock out the owner.")** — \`ArbitrarySend.sweepFees\` | [\`ArbitrarySend.sol:22\`](https://github.com/acme/demo/blob/abc123/src/vulns/ArbitrarySend.sol#L22) |
+| 🟡 Low | **[Address not checked for zero](https://github.com/crytic/slither/wiki/Detector-Documentation#missing-zero-address-validation "Passing address(0) can burn funds or lock out the owner.")** — \`ParityStyleLibrary.execute\` | [\`ParityStyleLibrary.sol:33\`](https://github.com/acme/demo/blob/abc123/src/vulns/ParityStyleLibrary.sol#L33) |
+| 🟡 Low | **[State written after an external call](https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities-3 "Likely harmless today, but breaks checks-effects-interactions.")** — \`UncheckedToken.deposit\` | [\`UncheckedToken.sol:24\`](https://github.com/acme/demo/blob/abc123/src/vulns/UncheckedToken.sol#L24) |
 
 </details>
 
@@ -26,19 +31,45 @@ exports[`renderComment > renders findings from the fixture 1`] = `
 <summary>Raw Slither output</summary>
 
 \`\`\`text
-[High] reentrancy-eth src/Vault.sol:20
-Reentrancy in Vault.withdraw(uint256) (src/Vault.sol#20-27):
+[High] arbitrary-send-eth src/vulns/ArbitrarySend.sol:22
+ArbitrarySend.sweepFees(address) (src/vulns/ArbitrarySend.sol#22-26) sends eth to arbitrary user
+	Dangerous calls:
+	- to.transfer(amount) (src/vulns/ArbitrarySend.sol#25)
+
+[High] unprotected-upgrade src/vulns/ParityStyleLibrary.sol:21
+ParityStyleLibrary (src/vulns/ParityStyleLibrary.sol#21-46) is an upgradeable contract that does not protect its initialize functions: ParityStyleLibrary.initWallet(address) (src/vulns/ParityStyleLibrary.sol#28-31). Anyone can delete the contract with: ParityStyleLibrary.kill(address) (src/vulns/ParityStyleLibrary.sol#42-45)
+
+[High] reentrancy-eth src/vulns/ReentrantBank.sol:16
+Reentrancy in ReentrantBank.withdraw() (src/vulns/ReentrantBank.sol#16-26):
 	External calls:
-	- (ok,None) = msg.sender.call{value: amount}() (src/Vault.sol#23)
+	- (ok,None) = msg.sender.call{value: amount}() (src/vulns/ReentrantBank.sol#22)
 	State variables written after the call(s):
-	- balances[msg.sender] -= amount (src/Vault.sol#25)
+	- balances[msg.sender] = 0 (src/vulns/ReentrantBank.sol#25)
+	ReentrantBank.balances (src/vulns/ReentrantBank.sol#10) can be used in cross function reentrancies:
+	- ReentrantBank.balances (src/vulns/ReentrantBank.sol#10)
+	- ReentrantBank.deposit() (src/vulns/ReentrantBank.sol#12-14)
+	- ReentrantBank.withdraw() (src/vulns/ReentrantBank.sol#16-26)
 
-[Medium] unchecked-transfer src/Token.sol:41
-Token.transfer(address,uint256) (src/Token.sol#41-45) ignores return value by token.transfer(to,amount) (src/Token.sol#43)
+[High] unchecked-transfer src/vulns/UncheckedToken.sol:30
+UncheckedToken.withdraw(uint256) (src/vulns/UncheckedToken.sol#30-35) ignores return value by token.transfer(msg.sender,amount) (src/vulns/UncheckedToken.sol#34)
 
-[Low] missing-zero-check src/Vault.sol:33
-Vault.setOwner(address).newOwner (src/Vault.sol#33) lacks a zero-check on :
-		- owner = newOwner (src/Vault.sol#34)
+[Medium] tx-origin src/vulns/TxOriginWallet.sol:18
+TxOriginWallet.transferTo(address,uint256) (src/vulns/TxOriginWallet.sol#18-23) uses tx.origin for authorization: require(bool,string)(tx.origin == owner,not owner) (src/vulns/TxOriginWallet.sol#20)
+
+[Low] missing-zero-check src/vulns/ArbitrarySend.sol:22
+ArbitrarySend.sweepFees(address).to (src/vulns/ArbitrarySend.sol#22) lacks a zero-check on :
+		- to.transfer(amount) (src/vulns/ArbitrarySend.sol#25)
+
+[Low] missing-zero-check src/vulns/ParityStyleLibrary.sol:33
+ParityStyleLibrary.execute(address,uint256,bytes).to (src/vulns/ParityStyleLibrary.sol#33) lacks a zero-check on :
+		- (ok,ret) = to.call{value: value}(data) (src/vulns/ParityStyleLibrary.sol#35)
+
+[Low] reentrancy-benign src/vulns/UncheckedToken.sol:24
+Reentrancy in UncheckedToken.deposit(uint256) (src/vulns/UncheckedToken.sol#24-28):
+	External calls:
+	- token.transferFrom(msg.sender,address(this),amount) (src/vulns/UncheckedToken.sol#26)
+	State variables written after the call(s):
+	- deposits[msg.sender] += amount (src/vulns/UncheckedToken.sol#27)
 \`\`\`
 
 </details>
