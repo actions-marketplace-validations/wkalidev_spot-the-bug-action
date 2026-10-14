@@ -1,0 +1,46 @@
+{
+  "name": "spot-the-bug-action",
+  "version": "0.1.0",
+  "description": "GitHub Action that scans Solidity files changed in a pull request with Slither and posts a sticky summary comment.",
+  "type": "module",
+  "main": "dist/index.js",
+  "private": true,
+  "author": "wkalidev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wkalidev/spot-the-bug-action.git"
+  },
+  "keywords": [
+    "github-action",
+    "solidity",
+    "slither",
+    "security"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "ncc build src/main.ts -o dist --license licenses.txt",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@actions/core": "^3.0.1",
+    "@actions/exec": "^3.0.0",
+    "@actions/github": "^9.1.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "@vercel/ncc": "^0.45.0",
+    "eslint": "^10.12.0",
+    "prettier": "^3.9.10",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.4"
+  }
+}
