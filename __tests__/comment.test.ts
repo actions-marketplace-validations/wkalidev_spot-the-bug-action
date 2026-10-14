@@ -70,6 +70,23 @@ describe("renderComment", () => {
     expect(body).toContain("…and 5 more");
   });
 
+  it("collapses low-severity findings below high and medium ones", () => {
+    const summary = summarizeFindings(loadFixture(), ALL_FILES, PATH_CONTEXT);
+    const body = renderComment(summary, LINK);
+    const details = body.indexOf("<details>\n<summary>🟡 1 low-severity finding</summary>\n\n|");
+    expect(details).toBeGreaterThan(body.indexOf("| 🟠 Medium"));
+    expect(body.indexOf("| 🟡 Low")).toBeGreaterThan(details);
+    expect(body.indexOf("</details>")).toBeGreaterThan(body.indexOf("| 🟡 Low"));
+  });
+
+  it("renders only the collapsed table when all findings are low", () => {
+    const summary = summarizeFindings(loadFixture(), changedFiles("src/Vault.sol"), PATH_CONTEXT);
+    const lowOnly = { ...summary, reported: summary.reported.filter((f) => f.severity === "Low") };
+    const body = renderComment(lowOnly, LINK);
+    expect(body.split("| Severity | Issue | Location |")).toHaveLength(2);
+    expect(body.indexOf("<details>")).toBeLessThan(body.indexOf("| Severity |"));
+  });
+
   it("escapes pipes and newlines in descriptions", () => {
     const summary: FindingsSummary = {
       reported: [

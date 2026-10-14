@@ -12,7 +12,15 @@ exports[`renderComment > renders findings from the fixture 1`] = `
 | --- | --- | --- |
 | 🔴 High | **Reentrancy can drain ETH** — \`Vault.withdraw\` | [\`Vault.sol:20\`](https://github.com/acme/demo/blob/abc123/src/Vault.sol#L20) |
 | 🟠 Medium | **Token transfer result ignored** — \`Token.transfer\` | [\`Token.sol:41\`](https://github.com/acme/demo/blob/abc123/src/Token.sol#L41) |
+
+<details>
+<summary>🟡 1 low-severity finding</summary>
+
+| Severity | Issue | Location |
+| --- | --- | --- |
 | 🟡 Low | **Address not checked for zero** — \`Vault.setOwner\` | [\`Vault.sol:33\`](https://github.com/acme/demo/blob/abc123/src/Vault.sol#L33) |
+
+</details>
 
 <sub>Scanned by [Spot the Bug](https://github.com/wkalidev/spot-the-bug-action) · Need a full audit? hello@wkalidev.com</sub>
 "

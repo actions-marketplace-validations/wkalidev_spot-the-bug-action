@@ -75,6 +75,18 @@ function renderRow(finding: Finding, link: LinkContext, options: RenderOptions):
   return `| ${severity} | ${issue} | ${renderLocation(finding, link)} |`;
 }
 
+/** A findings table capped at MAX_ROWS rows, followed by the remainder count. */
+function renderTable(findings: Finding[], link: LinkContext, options: RenderOptions): string[] {
+  const lines = ["| Severity | Issue | Location |", "| --- | --- | --- |"];
+  for (const finding of findings.slice(0, MAX_ROWS)) {
+    lines.push(renderRow(finding, link, options));
+  }
+  if (findings.length > MAX_ROWS) {
+    lines.push("", `…and ${findings.length - MAX_ROWS} more`);
+  }
+  return lines;
+}
+
 export function renderComment(
   summary: FindingsSummary,
   link: LinkContext,
@@ -104,17 +116,23 @@ export function renderComment(
     );
   }
 
-  if (total > 0) {
+  // High and Medium stay visible; Low findings are collapsed below them.
+  const prominent = summary.reported.filter((f) => f.severity !== "Low");
+  const low = summary.reported.filter((f) => f.severity === "Low");
+
+  if (prominent.length > 0) {
     lines.push("");
-    lines.push("| Severity | Issue | Location |");
-    lines.push("| --- | --- | --- |");
-    for (const finding of summary.reported.slice(0, MAX_ROWS)) {
-      lines.push(renderRow(finding, link, options));
-    }
-    if (total > MAX_ROWS) {
-      lines.push("");
-      lines.push(`…and ${total - MAX_ROWS} more`);
-    }
+    lines.push(...renderTable(prominent, link, options));
+  }
+  if (low.length > 0) {
+    const noun = low.length === 1 ? "finding" : "findings";
+    lines.push("");
+    lines.push("<details>");
+    lines.push(`<summary>🟡 ${low.length} low-severity ${noun}</summary>`);
+    lines.push("");
+    lines.push(...renderTable(low, link, options));
+    lines.push("");
+    lines.push("</details>");
   }
 
   lines.push("");
