@@ -37345,10 +37345,141 @@ async function getChangedFiles(octokit, context) {
     return { all: false, files };
 }
 
+;// CONCATENATED MODULE: ./src/explanations.ts
+/** Longest title, explanation or cleaned description shown in the comment. */
+const MAX_TEXT_LENGTH = 90;
+const WIKI_BASE = "https://github.com/crytic/slither/wiki/Detector-Documentation";
+/** Plain-English explanations for common Slither checks, keyed by check id. */
+const EXPLANATIONS = {
+    "arbitrary-send-eth": {
+        title: "Anyone can send the contract's ETH",
+        why: "A public function forwards ETH to a caller-controlled address.",
+    },
+    "unprotected-upgrade": {
+        title: "Anyone can initialize or destroy the contract",
+        why: "The initializer is unprotected, so an attacker can take ownership and selfdestruct it.",
+    },
+    suicidal: {
+        title: "Anyone can destroy the contract",
+        why: "selfdestruct is reachable without access control, wiping code and funds.",
+    },
+    "reentrancy-eth": {
+        title: "Reentrancy can drain ETH",
+        why: "State is updated after an external call, so a callback can withdraw again.",
+    },
+    "reentrancy-no-eth": {
+        title: "Reentrancy can corrupt state",
+        why: "State is updated after an external call, so a callback sees stale values.",
+    },
+    "reentrancy-benign": {
+        title: "State written after an external call",
+        why: "Likely harmless today, but breaks checks-effects-interactions.",
+    },
+    "unchecked-transfer": {
+        title: "Token transfer result ignored",
+        why: "A transfer that returns false goes unnoticed; use SafeERC20.",
+    },
+    "unchecked-lowlevel": {
+        title: "Low-level call result ignored",
+        why: "A failed call does not revert, so execution continues silently.",
+    },
+    "unchecked-send": {
+        title: "send() result ignored",
+        why: "send returns false instead of reverting, so a failed payment goes unnoticed.",
+    },
+    "tx-origin": {
+        title: "Authorization uses tx.origin",
+        why: "A malicious contract the owner calls can act as the owner; use msg.sender.",
+    },
+    "missing-zero-check": {
+        title: "Address not checked for zero",
+        why: "Passing address(0) can burn funds or lock out the owner.",
+    },
+    "controlled-delegatecall": {
+        title: "Caller controls a delegatecall",
+        why: "Arbitrary code runs with this contract's storage and balance.",
+    },
+    "delegatecall-loop": {
+        title: "delegatecall inside a payable loop",
+        why: "msg.value is reused on every iteration, so callers spend ETH they never sent.",
+    },
+    "uninitialized-state": {
+        title: "State variable never initialized",
+        why: "It is read while still zero, which is likely not the intended value.",
+    },
+    "uninitialized-storage": {
+        title: "Uninitialized storage pointer",
+        why: "It points at slot 0, so writes through it overwrite unrelated state.",
+    },
+    "weak-prng": {
+        title: "Predictable randomness",
+        why: "Block values can be predicted or influenced by validators and callers.",
+    },
+    "divide-before-multiply": {
+        title: "Division before multiplication",
+        why: "Integer division truncates first, so the result loses precision.",
+    },
+    "incorrect-equality": {
+        title: "Strict equality on a balance or amount",
+        why: "Anyone can force-send ETH or tokens so that == never holds.",
+    },
+    "locked-ether": {
+        title: "ETH can get locked",
+        why: "The contract accepts ETH but has no way to send it out.",
+    },
+    "shadowing-state": {
+        title: "State variable shadowed",
+        why: "A child contract redeclares a parent variable, so each side uses its own copy.",
+    },
+    timestamp: {
+        title: "Logic depends on block.timestamp",
+        why: "Validators can nudge the timestamp; avoid it for critical comparisons.",
+    },
+};
+function explain(check) {
+    return Object.hasOwn(EXPLANATIONS, check) ? EXPLANATIONS[check] : undefined;
+}
+/**
+ * Link to a detector's section of the Slither wiki, using the anchor of the
+ * `wiki_url` Slither reports for it. Returns undefined when there is no anchor.
+ */
+function slitherWikiUrl(wikiUrl) {
+    const anchor = wikiUrl?.split("#")[1]?.trim().toLowerCase();
+    return anchor ? `${WIKI_BASE}#${anchor}` : undefined;
+}
+/**
+ * First "Contract.function" referenced in a Slither description, without its
+ * parameter list. Returns undefined when the description names no function.
+ */
+function extractFunction(description) {
+    const firstLine = description.split(/\r?\n/)[0] ?? "";
+    const match = /\b([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\(/.exec(firstLine);
+    return match ? `${match[1]}.${match[2]}` : undefined;
+}
+function truncate(text, max = MAX_TEXT_LENGTH) {
+    return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+}
+/**
+ * Turn a raw Slither description into one short readable line: first line
+ * only, without "(path#lines)" groups or dangling ":" / "on" / "by" endings.
+ */
+function cleanDescription(description) {
+    const firstLine = description.trim().split(/\r?\n/)[0] ?? "";
+    const cleaned = firstLine
+        .replace(/\s*\([^()]*#\d+(?:-\d+)?\)/g, "")
+        .replace(/\s+/g, " ")
+        .replace(/(?:\s*:|(?:^|\s+)(?:on|by))+\s*$/i, "")
+        .trim();
+    return truncate(cleaned);
+}
+
 ;// CONCATENATED MODULE: ./src/comment.ts
+
 
 const COMMENT_MARKER = "<!-- spot-the-bug -->";
 const MAX_ROWS = 30;
+/** GitHub rejects comments over 65536 characters; leave room for the tables. */
+const MAX_RAW_LENGTH = 40_000;
 const SEVERITY_ICONS = {
     High: "🔴",
     Medium: "🟠",
@@ -37358,6 +37489,9 @@ const SEVERITY_ICONS = {
 };
 const FOOTER = "<sub>Scanned by [Spot the Bug](https://github.com/wkalidev/spot-the-bug-action) · " +
     "Need a full audit? hello@wkalidev.com</sub>";
+function escapeLinkText(text) {
+    return text.replace(/[[\]]/g, "\\$&");
+}
 function escapeCell(text) {
     return text.replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim();
 }
@@ -37369,14 +37503,70 @@ function blobUrl(file, line, link) {
 function renderLocation(finding, link) {
     if (!finding.file)
         return "—";
-    const label = finding.line > 0 ? `${finding.file}:${finding.line}` : finding.file;
+    const name = finding.file.slice(finding.file.lastIndexOf("/") + 1);
+    const label = finding.line > 0 ? `${name}:${finding.line}` : name;
     return `[\`${label}\`](${blobUrl(finding.file, finding.line, link)})`;
 }
-function renderRow(finding, link) {
-    const severity = `${SEVERITY_ICONS[finding.severity]} ${finding.severity}`;
-    return `| ${severity} | \`${finding.id}\` | ${renderLocation(finding, link)} | ${escapeCell(finding.description)} |`;
+/**
+ * Plain-English title and affected function for known checks, or the cleaned
+ * Slither text otherwise. Linked to the Slither wiki when its URL is known.
+ */
+function renderIssue(finding, options = {}) {
+    const explanation = explain(finding.id);
+    const text = explanation?.title ?? (cleanDescription(finding.description) || finding.id);
+    const wikiUrl = slitherWikiUrl(options.wikiUrls?.get(finding.id));
+    const tooltip = explanation ? ` "${explanation.why.replace(/"/g, "'")}"` : "";
+    const label = wikiUrl ? `[${escapeLinkText(text)}](${wikiUrl}${tooltip})` : text;
+    if (!explanation)
+        return label;
+    const fn = extractFunction(finding.description);
+    return fn ? `**${label}** — \`${fn}\`` : `**${label}**`;
 }
-function renderComment(summary, link) {
+function renderRow(finding, link, options) {
+    const severity = `${SEVERITY_ICONS[finding.severity]} ${finding.severity}`;
+    const issue = escapeCell(renderIssue(finding, options));
+    return `| ${severity} | ${issue} | ${renderLocation(finding, link)} |`;
+}
+/** A findings table capped at MAX_ROWS rows, followed by the remainder count. */
+function renderTable(findings, link, options) {
+    const lines = ["| Severity | Issue | Location |", "| --- | --- | --- |"];
+    for (const finding of findings.slice(0, MAX_ROWS)) {
+        lines.push(renderRow(finding, link, options));
+    }
+    if (findings.length > MAX_ROWS) {
+        lines.push("", `…and ${findings.length - MAX_ROWS} more`);
+    }
+    return lines;
+}
+/**
+ * Collapsed code block with the full Slither descriptions, so nothing is lost
+ * by the short table. Capped at MAX_RAW_LENGTH to stay under GitHub's limit.
+ */
+function renderRawOutput(findings) {
+    let raw = findings
+        .map((f) => {
+        const location = f.file ? ` ${f.file}${f.line > 0 ? `:${f.line}` : ""}` : "";
+        return `[${f.severity}] ${f.id}${location}\n${f.description}`;
+    })
+        .join("\n\n");
+    if (raw.length > MAX_RAW_LENGTH) {
+        raw = `${raw.slice(0, MAX_RAW_LENGTH).trimEnd()}\n…(truncated)`;
+    }
+    // The fence must be longer than any backtick run inside the descriptions.
+    const longestRun = Math.max(0, ...(raw.match(/`+/g) ?? []).map((run) => run.length));
+    const fence = "`".repeat(Math.max(3, longestRun + 1));
+    return [
+        "<details>",
+        "<summary>Raw Slither output</summary>",
+        "",
+        `${fence}text`,
+        raw,
+        fence,
+        "",
+        "</details>",
+    ];
+}
+function renderComment(summary, link, options = {}) {
     const total = summary.reported.length;
     const lines = [COMMENT_MARKER];
     if (total === 0) {
@@ -37395,17 +37585,26 @@ function renderComment(summary, link) {
         lines.push(`<sub>Not shown: ${summary.informationalCount} informational, ` +
             `${summary.optimizationCount} optimization.</sub>`);
     }
+    // High and Medium stay visible; Low findings are collapsed below them.
+    const prominent = summary.reported.filter((f) => f.severity !== "Low");
+    const low = summary.reported.filter((f) => f.severity === "Low");
+    if (prominent.length > 0) {
+        lines.push("");
+        lines.push(...renderTable(prominent, link, options));
+    }
+    if (low.length > 0) {
+        const noun = low.length === 1 ? "finding" : "findings";
+        lines.push("");
+        lines.push("<details>");
+        lines.push(`<summary>🟡 ${low.length} low-severity ${noun}</summary>`);
+        lines.push("");
+        lines.push(...renderTable(low, link, options));
+        lines.push("");
+        lines.push("</details>");
+    }
     if (total > 0) {
         lines.push("");
-        lines.push("| Severity | Check | Location | Description |");
-        lines.push("| --- | --- | --- | --- |");
-        for (const finding of summary.reported.slice(0, MAX_ROWS)) {
-            lines.push(renderRow(finding, link));
-        }
-        if (total > MAX_ROWS) {
-            lines.push("");
-            lines.push(`…and ${total - MAX_ROWS} more`);
-        }
+        lines.push(...renderRawOutput(summary.reported));
     }
     lines.push("");
     lines.push(FOOTER);
@@ -37468,7 +37667,7 @@ function toRepoRelative(mapping, ctx) {
 function normalizeFinding(result, ctx) {
     const element = (result.elements ?? []).find((e) => e.source_mapping);
     const mapping = element?.source_mapping;
-    const description = (result.description ?? "").trim().split(/\r?\n/)[0]?.trim() ?? "";
+    const description = (result.description ?? "").trim();
     return {
         id: result.check,
         severity: toSeverity(result.impact ?? ""),
@@ -37552,6 +37751,17 @@ function splitArgs(input) {
         args.push(current);
     return args;
 }
+function collectWikiUrls(docs) {
+    const wikiUrls = new Map();
+    if (!Array.isArray(docs))
+        return wikiUrls;
+    for (const doc of docs) {
+        if (typeof doc?.check === "string" && typeof doc.wiki_url === "string") {
+            wikiUrls.set(doc.check, doc.wiki_url);
+        }
+    }
+    return wikiUrls;
+}
 /**
  * Parse and validate the content of a slither JSON report.
  */
@@ -37575,10 +37785,11 @@ function parseSlitherReport(raw) {
     if (!Array.isArray(detectors)) {
         throw new Error("Slither JSON report has an invalid results.detectors field.");
     }
-    return detectors;
+    return { detectors, wikiUrls: collectWikiUrls(report.results?.["list-detectors"]) };
 }
 /**
- * Run slither in `workingDirectory` and return its detector results.
+ * Run slither in `workingDirectory` and return its detector results, along with
+ * the detector documentation used to link each check to the Slither wiki.
  * Slither exits non-zero when it finds issues, so the exit code is ignored;
  * only a missing or invalid JSON report is treated as a failure.
  */
@@ -37587,7 +37798,14 @@ async function runSlither(workingDirectory, extraArgs) {
     const jsonPath = external_node_path_namespaceObject.join(tempDir, "spot-the-bug-slither.json");
     // Slither refuses to overwrite an existing report.
     (0,external_node_fs_namespaceObject.rmSync)(jsonPath, { force: true });
-    const args = [".", "--json", jsonPath, ...splitArgs(extraArgs)];
+    const args = [
+        ".",
+        "--json",
+        jsonPath,
+        "--json-types",
+        "detectors,list-detectors",
+        ...splitArgs(extraArgs),
+    ];
     info(`Running: slither ${args.join(" ")} (cwd: ${workingDirectory})`);
     const exitCode = await exec_exec("slither", args, {
         cwd: workingDirectory,
@@ -37653,7 +37871,7 @@ async function run() {
         setZeroOutputs();
         return;
     }
-    const detectors = await runSlither(workingDirectory, slitherArgs);
+    const { detectors, wikiUrls } = await runSlither(workingDirectory, slitherArgs);
     info(`Slither reported ${detectors.length} detector results.`);
     const summary = summarizeFindings(detectors, changed, {
         repoRoot,
@@ -37667,7 +37885,7 @@ async function run() {
         serverUrl: context.serverUrl,
         ...context.repo,
         sha: pullRequest?.head?.sha ?? context.sha,
-    });
+    }, { wikiUrls });
     if (pullRequest) {
         try {
             await upsertComment(octokit, context.repo, pullRequest.number, body);
