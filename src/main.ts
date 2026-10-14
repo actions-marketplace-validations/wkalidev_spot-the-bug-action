@@ -64,7 +64,9 @@ export async function run(): Promise<void> {
       );
     }
   }
-  await core.summary.addRaw(body).write();
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    await core.summary.addRaw(body).write();
+  }
 
   core.setOutput("findings-count", summary.reported.length);
   core.setOutput("high-count", summary.counts.High);
