@@ -23,9 +23,27 @@ describe("parseSlitherReport", () => {
   });
 
   it("treats a report without detectors as empty", () => {
-    expect(parseSlitherReport(JSON.stringify({ success: true, error: null, results: {} }))).toEqual(
-      [],
-    );
+    const output = parseSlitherReport(JSON.stringify({ success: true, error: null, results: {} }));
+    expect(output.detectors).toEqual([]);
+    expect(output.wikiUrls.size).toBe(0);
+  });
+
+  it("collects wiki URLs from list-detectors and skips malformed entries", () => {
+    const raw = JSON.stringify({
+      success: true,
+      error: null,
+      results: {
+        detectors: [],
+        "list-detectors": [
+          { check: "tx-origin", wiki_url: "https://example.com/wiki#dangerous-usage-of-txorigin" },
+          { check: "no-url" },
+          null,
+        ],
+      },
+    });
+    expect([...parseSlitherReport(raw).wikiUrls]).toEqual([
+      ["tx-origin", "https://example.com/wiki#dangerous-usage-of-txorigin"],
+    ]);
   });
 });
 

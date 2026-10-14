@@ -28,10 +28,23 @@ export interface SlitherDetectorResult {
   id?: string;
 }
 
+/** Documentation entry from Slither's "list-detectors" JSON output. */
+export interface SlitherDetectorDoc {
+  check: string;
+  title?: string;
+  wiki_url?: string;
+}
+
 export interface SlitherReport {
   success: boolean;
   error: string | null;
-  results?: { detectors?: SlitherDetectorResult[] };
+  results?: { detectors?: SlitherDetectorResult[]; "list-detectors"?: SlitherDetectorDoc[] };
+}
+
+export interface SlitherOutput {
+  detectors: SlitherDetectorResult[];
+  /** Wiki URL reported by Slither for each check id, when available. */
+  wikiUrls: Map<string, string>;
 }
 
 /**
@@ -57,10 +70,21 @@ export function splitArgs(input: string): string[] {
   return args;
 }
 
+function collectWikiUrls(docs: unknown): Map<string, string> {
+  const wikiUrls = new Map<string, string>();
+  if (!Array.isArray(docs)) return wikiUrls;
+  for (const doc of docs as Partial<SlitherDetectorDoc>[]) {
+    if (typeof doc?.check === "string" && typeof doc.wiki_url === "string") {
+      wikiUrls.set(doc.check, doc.wiki_url);
+    }
+  }
+  return wikiUrls;
+}
+
 /**
  * Parse and validate the content of a slither JSON report.
  */
-export function parseSlitherReport(raw: string): SlitherDetectorResult[] {
+export function parseSlitherReport(raw: string): SlitherOutput {
   let report: SlitherReport;
   try {
     report = JSON.parse(raw) as SlitherReport;
@@ -79,24 +103,32 @@ export function parseSlitherReport(raw: string): SlitherDetectorResult[] {
   if (!Array.isArray(detectors)) {
     throw new Error("Slither JSON report has an invalid results.detectors field.");
   }
-  return detectors;
+  return { detectors, wikiUrls: collectWikiUrls(report.results?.["list-detectors"]) };
 }
 
 /**
- * Run slither in `workingDirectory` and return its detector results.
+ * Run slither in `workingDirectory` and return its detector results, along with
+ * the detector documentation used to link each check to the Slither wiki.
  * Slither exits non-zero when it finds issues, so the exit code is ignored;
  * only a missing or invalid JSON report is treated as a failure.
  */
 export async function runSlither(
   workingDirectory: string,
   extraArgs: string,
-): Promise<SlitherDetectorResult[]> {
+): Promise<SlitherOutput> {
   const tempDir = process.env.RUNNER_TEMP || os.tmpdir();
   const jsonPath = path.join(tempDir, "spot-the-bug-slither.json");
   // Slither refuses to overwrite an existing report.
   rmSync(jsonPath, { force: true });
 
-  const args = [".", "--json", jsonPath, ...splitArgs(extraArgs)];
+  const args = [
+    ".",
+    "--json",
+    jsonPath,
+    "--json-types",
+    "detectors,list-detectors",
+    ...splitArgs(extraArgs),
+  ];
   core.info(`Running: slither ${args.join(" ")} (cwd: ${workingDirectory})`);
   const exitCode = await exec.exec("slither", args, {
     cwd: workingDirectory,

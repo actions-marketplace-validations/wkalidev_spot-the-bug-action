@@ -32,7 +32,7 @@ export async function run(): Promise<void> {
     return;
   }
 
-  const detectors = await runSlither(workingDirectory, slitherArgs);
+  const { detectors } = await runSlither(workingDirectory, slitherArgs);
   core.info(`Slither reported ${detectors.length} detector results.`);
 
   const summary = summarizeFindings(detectors, changed, {
