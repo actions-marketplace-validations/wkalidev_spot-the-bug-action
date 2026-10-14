@@ -1,9 +1,11 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import * as path from "node:path";
-import { getChangedFiles } from "./changed-files.js";
+import { getChangedFiles, isPullRequestEvent } from "./changed-files.js";
+import { renderComment, upsertComment } from "./comment.js";
 import { summarizeFindings } from "./findings.js";
 import { runSlither } from "./slither.js";
+import { countAtOrAbove, parseFailOn, shouldFail } from "./threshold.js";
 
 function setZeroOutputs(): void {
   core.setOutput("findings-count", 0);
@@ -14,6 +16,8 @@ export async function run(): Promise<void> {
   const token = core.getInput("github-token", { required: true });
   const workingDirectoryInput = core.getInput("working-directory") || ".";
   const slitherArgs = core.getInput("slither-args");
+  // Validate early so a typo does not surface only after a long scan.
+  const failOn = parseFailOn(core.getInput("fail-on"));
 
   const repoRoot = process.env.GITHUB_WORKSPACE || process.cwd();
   const workingDirectory = path.resolve(repoRoot, workingDirectoryInput);
@@ -40,6 +44,37 @@ export async function run(): Promise<void> {
       `${summary.counts.Low} low, ${summary.informationalCount} informational, ` +
       `${summary.optimizationCount} optimization.`,
   );
+
+  const pullRequest = isPullRequestEvent(context) ? context.payload.pull_request : undefined;
+  const body = renderComment(summary, {
+    serverUrl: context.serverUrl,
+    ...context.repo,
+    sha: (pullRequest?.head as { sha?: string } | undefined)?.sha ?? context.sha,
+  });
+
+  if (pullRequest) {
+    try {
+      await upsertComment(octokit, context.repo, pullRequest.number, body);
+    } catch (error) {
+      // Typical cause: fork PRs with a read-only token. Do not hide the scan result.
+      core.warning(
+        `Could not post the PR comment (does the job have "pull-requests: write"?): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+  await core.summary.addRaw(body).write();
+
+  core.setOutput("findings-count", summary.reported.length);
+  core.setOutput("high-count", summary.counts.High);
+
+  if (shouldFail(summary.counts, failOn)) {
+    core.setFailed(
+      `Spot the Bug found ${countAtOrAbove(summary.counts, failOn)} finding(s) ` +
+        `at or above "${failOn}" severity in changed files.`,
+    );
+  }
 }
 
 run().catch((error: unknown) => {
