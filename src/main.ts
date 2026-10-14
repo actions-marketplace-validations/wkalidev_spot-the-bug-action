@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import * as path from "node:path";
 import { getChangedFiles } from "./changed-files.js";
+import { summarizeFindings } from "./findings.js";
 import { runSlither } from "./slither.js";
 
 function setZeroOutputs(): void {
@@ -29,6 +30,16 @@ export async function run(): Promise<void> {
 
   const detectors = await runSlither(workingDirectory, slitherArgs);
   core.info(`Slither reported ${detectors.length} detector results.`);
+
+  const summary = summarizeFindings(detectors, changed, {
+    repoRoot,
+    workingDirectory: path.relative(repoRoot, workingDirectory) || ".",
+  });
+  core.info(
+    `Findings in scope: ${summary.counts.High} high, ${summary.counts.Medium} medium, ` +
+      `${summary.counts.Low} low, ${summary.informationalCount} informational, ` +
+      `${summary.optimizationCount} optimization.`,
+  );
 }
 
 run().catch((error: unknown) => {
