@@ -1,6 +1,8 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+import * as path from "node:path";
 import { getChangedFiles } from "./changed-files.js";
+import { runSlither } from "./slither.js";
 
 function setZeroOutputs(): void {
   core.setOutput("findings-count", 0);
@@ -9,6 +11,12 @@ function setZeroOutputs(): void {
 
 export async function run(): Promise<void> {
   const token = core.getInput("github-token", { required: true });
+  const workingDirectoryInput = core.getInput("working-directory") || ".";
+  const slitherArgs = core.getInput("slither-args");
+
+  const repoRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+  const workingDirectory = path.resolve(repoRoot, workingDirectoryInput);
+
   const octokit = github.getOctokit(token);
   const context = github.context;
 
@@ -18,6 +26,9 @@ export async function run(): Promise<void> {
     setZeroOutputs();
     return;
   }
+
+  const detectors = await runSlither(workingDirectory, slitherArgs);
+  core.info(`Slither reported ${detectors.length} detector results.`);
 }
 
 run().catch((error: unknown) => {
