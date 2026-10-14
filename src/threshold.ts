@@ -16,7 +16,9 @@ export function parseFailOn(input: string): FailOn {
   if ((FAIL_ON_VALUES as readonly string[]).includes(value)) {
     return value as FailOn;
   }
-  throw new Error(`Invalid fail-on value "${input}". Expected one of: ${FAIL_ON_VALUES.join(", ")}.`);
+  throw new Error(
+    `Invalid fail-on value "${input}". Expected one of: ${FAIL_ON_VALUES.join(", ")}.`,
+  );
 }
 
 /** Number of findings at or above the `fail-on` threshold. */

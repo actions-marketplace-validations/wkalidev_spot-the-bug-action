@@ -65,7 +65,9 @@ export function parseSlitherReport(raw: string): SlitherDetectorResult[] {
   try {
     report = JSON.parse(raw) as SlitherReport;
   } catch (error) {
-    throw new Error(`Slither JSON report is not valid JSON: ${(error as Error).message}`);
+    throw new Error(`Slither JSON report is not valid JSON: ${(error as Error).message}`, {
+      cause: error,
+    });
   }
   if (typeof report !== "object" || report === null) {
     throw new Error("Slither JSON report has an unexpected shape.");
