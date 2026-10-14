@@ -17,6 +17,7 @@ export interface Finding {
   file: string;
   /** First line of the finding, or 0 when unknown. */
   line: number;
+  /** Full Slither description; the comment shows a short form and keeps this as raw output. */
   description: string;
 }
 
@@ -70,7 +71,7 @@ export function toRepoRelative(
 export function normalizeFinding(result: SlitherDetectorResult, ctx: PathContext): Finding {
   const element = (result.elements ?? []).find((e) => e.source_mapping);
   const mapping = element?.source_mapping;
-  const description = (result.description ?? "").trim().split(/\r?\n/)[0]?.trim() ?? "";
+  const description = (result.description ?? "").trim();
   return {
     id: result.check,
     severity: toSeverity(result.impact ?? ""),

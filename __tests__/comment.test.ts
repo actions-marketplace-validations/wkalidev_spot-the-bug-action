@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { COMMENT_MARKER, MAX_ROWS, blobUrl, renderComment, renderIssue } from "../src/comment.js";
+import {
+  COMMENT_MARKER,
+  MAX_RAW_LENGTH,
+  MAX_ROWS,
+  blobUrl,
+  renderComment,
+  renderIssue,
+  renderRawOutput,
+} from "../src/comment.js";
 import { summarizeFindings, type Finding, type FindingsSummary } from "../src/findings.js";
 import { ALL_FILES, PATH_CONTEXT, changedFiles, loadFixture } from "./helpers.js";
 
@@ -125,6 +133,35 @@ const FINDING: Finding = {
   description:
     "ArbitrarySend.sweepFees(address) (src/vulns/ArbitrarySend.sol#22-26) sends eth to arbitrary user",
 };
+
+describe("renderRawOutput", () => {
+  it("keeps the full descriptions in a collapsed code block", () => {
+    const summary = summarizeFindings(loadFixture(), ALL_FILES, PATH_CONTEXT);
+    const body = renderComment(summary, LINK);
+    const raw = body.slice(body.indexOf("<summary>Raw Slither output</summary>"));
+    expect(raw).toContain("```text\n[High] reentrancy-eth src/Vault.sol:20\nReentrancy in");
+    expect(raw).toContain("\tState variables written after the call(s):");
+    expect(raw.indexOf("</details>")).toBeGreaterThan(raw.indexOf("\n```\n"));
+  });
+
+  it("is omitted in the clean state", () => {
+    const summary = summarizeFindings(loadFixture(), changedFiles("src/Other.sol"), PATH_CONTEXT);
+    expect(renderComment(summary, LINK)).not.toContain("Raw Slither output");
+  });
+
+  it("uses a fence longer than any backtick run in the descriptions", () => {
+    const lines = renderRawOutput([{ ...FINDING, description: "uses ```` inside" }]);
+    expect(lines).toContain("`````text");
+    expect(lines).toContain("`````");
+  });
+
+  it("truncates very long output", () => {
+    const lines = renderRawOutput([{ ...FINDING, description: "x".repeat(MAX_RAW_LENGTH * 2) }]);
+    const raw = lines.join("\n");
+    expect(raw.length).toBeLessThan(MAX_RAW_LENGTH + 200);
+    expect(raw).toContain("…(truncated)");
+  });
+});
 
 describe("renderIssue", () => {
   it("uses the plain-English title and the function without parameters", () => {

@@ -7,6 +7,8 @@ type Octokit = ReturnType<typeof github.getOctokit>;
 
 export const COMMENT_MARKER = "<!-- spot-the-bug -->";
 export const MAX_ROWS = 30;
+/** GitHub rejects comments over 65536 characters; leave room for the tables. */
+export const MAX_RAW_LENGTH = 40_000;
 
 const SEVERITY_ICONS: Record<Severity, string> = {
   High: "🔴",
@@ -87,6 +89,35 @@ function renderTable(findings: Finding[], link: LinkContext, options: RenderOpti
   return lines;
 }
 
+/**
+ * Collapsed code block with the full Slither descriptions, so nothing is lost
+ * by the short table. Capped at MAX_RAW_LENGTH to stay under GitHub's limit.
+ */
+export function renderRawOutput(findings: Finding[]): string[] {
+  let raw = findings
+    .map((f) => {
+      const location = f.file ? ` ${f.file}${f.line > 0 ? `:${f.line}` : ""}` : "";
+      return `[${f.severity}] ${f.id}${location}\n${f.description}`;
+    })
+    .join("\n\n");
+  if (raw.length > MAX_RAW_LENGTH) {
+    raw = `${raw.slice(0, MAX_RAW_LENGTH).trimEnd()}\n…(truncated)`;
+  }
+  // The fence must be longer than any backtick run inside the descriptions.
+  const longestRun = Math.max(0, ...(raw.match(/`+/g) ?? []).map((run) => run.length));
+  const fence = "`".repeat(Math.max(3, longestRun + 1));
+  return [
+    "<details>",
+    "<summary>Raw Slither output</summary>",
+    "",
+    `${fence}text`,
+    raw,
+    fence,
+    "",
+    "</details>",
+  ];
+}
+
 export function renderComment(
   summary: FindingsSummary,
   link: LinkContext,
@@ -133,6 +164,10 @@ export function renderComment(
     lines.push(...renderTable(low, link, options));
     lines.push("");
     lines.push("</details>");
+  }
+  if (total > 0) {
+    lines.push("");
+    lines.push(...renderRawOutput(summary.reported));
   }
 
   lines.push("");

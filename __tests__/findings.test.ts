@@ -91,16 +91,24 @@ describe("normalizeFinding", () => {
       confidence: "Medium",
       file: "src/Vault.sol",
       line: 20,
-      description: "Reentrancy in Vault.withdraw(uint256) (src/Vault.sol#20-27):",
+      description: expect.stringMatching(
+        /^Reentrancy in Vault\.withdraw\(uint256\) \(src\/Vault\.sol#20-27\):\n\tExternal calls:/,
+      ),
     });
   });
 
   it("handles results without source mapping", () => {
     const finding = normalizeFinding(
-      { check: "x", impact: "Low", confidence: "High", description: "Thing\nmore", elements: [] },
+      {
+        check: "x",
+        impact: "Low",
+        confidence: "High",
+        description: " Thing\nmore \n",
+        elements: [],
+      },
       PATH_CONTEXT,
     );
-    expect(finding).toMatchObject({ file: "", line: 0, description: "Thing" });
+    expect(finding).toMatchObject({ file: "", line: 0, description: "Thing\nmore" });
   });
 });
 

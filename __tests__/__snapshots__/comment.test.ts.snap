@@ -22,6 +22,27 @@ exports[`renderComment > renders findings from the fixture 1`] = `
 
 </details>
 
+<details>
+<summary>Raw Slither output</summary>
+
+\`\`\`text
+[High] reentrancy-eth src/Vault.sol:20
+Reentrancy in Vault.withdraw(uint256) (src/Vault.sol#20-27):
+	External calls:
+	- (ok,None) = msg.sender.call{value: amount}() (src/Vault.sol#23)
+	State variables written after the call(s):
+	- balances[msg.sender] -= amount (src/Vault.sol#25)
+
+[Medium] unchecked-transfer src/Token.sol:41
+Token.transfer(address,uint256) (src/Token.sol#41-45) ignores return value by token.transfer(to,amount) (src/Token.sol#43)
+
+[Low] missing-zero-check src/Vault.sol:33
+Vault.setOwner(address).newOwner (src/Vault.sol#33) lacks a zero-check on :
+		- owner = newOwner (src/Vault.sol#34)
+\`\`\`
+
+</details>
+
 <sub>Scanned by [Spot the Bug](https://github.com/wkalidev/spot-the-bug-action) · Need a full audit? hello@wkalidev.com</sub>
 "
 `;
