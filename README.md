@@ -15,6 +15,7 @@ Catch Solidity vulnerabilities in every pull request — before they reach mainn
 - **Only changed files are scanned** — fast, and no noise from code you didn't touch.
 - **One sticky comment** — updated in place on every push.
 - **Plain-English explanations** — instead of raw [Slither](https://github.com/crytic/slither) output.
+- **Nothing is lost** — low-severity findings are collapsed, and the raw Slither output is kept in a collapsed section.
 - **Fail-on threshold** — block risky merges at the severity you choose.
 
 ## Quick start
